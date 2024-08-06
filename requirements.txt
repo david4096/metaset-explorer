@@ -8,3 +8,4 @@ fastparquet
 requests
 huggingface_hub
 umap-learn
+sentence-transformers
