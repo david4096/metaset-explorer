@@ -2,6 +2,10 @@
 
 Metaset Explorer is a web-based application for visualizing datasets in 3D space. The backend, written in Python, serves data from a Parquet file and supports WebSocket connections for efficient data streaming. The frontend, built with Three.js, allows users to interact with and explore the data visually.
 
+<img width="1083" alt="Screenshot 2024-08-06 at 1 19 22 AM" src="https://github.com/user-attachments/assets/381b657a-c119-41b8-a43c-22e287bdf545">
+
+
+
 ## Features
 
 - **3D Visualization** of datasets.
