@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataset List</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            color: #333;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            margin: 5px 0;
+        }
+        a {
+            text-decoration: none;
+            color: #007BFF;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Available Datasets</h1>
+    <ul id="dataset-list"></ul>
+
+    <script>
+        async function fetchDatasets() {
+            try {
+                const response = await fetch('/datasets');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch datasets');
+                }
+                const datasets = await response.json();
+                const listElement = document.getElementById('dataset-list');
+
+                datasets.forEach(dataset => {
+                    const listItem = document.createElement('li');
+                    const link = document.createElement('a');
+                    link.href = `/visualize.html?dataset_name=${encodeURIComponent(dataset)}`;
+                    link.textContent = dataset;
+                    listItem.appendChild(link);
+                    listElement.appendChild(listItem);
+                });
+            } catch (error) {
+                console.error('Error fetching datasets:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchDatasets);
+    </script>
+</body>
+</html>

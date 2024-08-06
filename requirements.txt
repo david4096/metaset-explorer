@@ -1,0 +1,10 @@
+asyncio
+aiohttp
+pandas
+numpy
+websockets
+pyarrow
+fastparquet
+requests
+huggingface_hub
+umap-learn
