@@ -31,13 +31,13 @@ Metaset Explorer is a web-based application for visualizing datasets in 3D space
 2. Generate test data:
 
    ```bash
-   python test_data_generator.py
+   python dummy_metaset.py
    ```
 
 3. Run the server:
 
    ```bash
-   python server.py
+   python main.py
    ```
 
 
