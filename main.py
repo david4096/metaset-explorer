@@ -4,6 +4,9 @@ import pandas as pd
 import logging
 from aiohttp import web
 import os
+import math
+import gzip
+import base64
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -16,6 +19,7 @@ def load_datasets():
     logger.info("Loading datasets from Parquet file")
     data = pd.read_parquet('hfdatasets4.parquet')
     logger.info("Datasets loaded successfully")
+    logger.info(f"Data shape: {data.shape}")
     return data
 
 
@@ -33,8 +37,9 @@ async def websocket_handler(request):
                 request_data = json.loads(msg.data)
                 if request_data["type"] == "start_stream":
                     dataset_name = request_data.get("dataset_name")
-                    logger.info(f"Starting stream for dataset: {dataset_name}")
-                    await start_stream(ws, data, dataset_name)
+                    batch_size = request_data.get("batch_size", 100)  # Default batch size
+                    logger.info(f"Starting stream for dataset: {dataset_name} with batch size: {batch_size}")
+                    await start_stream(ws, data, dataset_name, batch_size)
             elif msg.type == web.WSMsgType.ERROR:
                 logger.error(f"WebSocket connection closed with exception {ws.exception()}")
     except Exception as e:
@@ -45,7 +50,7 @@ async def websocket_handler(request):
     return ws
 
 
-async def start_stream(ws, data, dataset_name):
+async def start_stream(ws, data, dataset_name, batch_size):
     # Filter data for the requested dataset
     dataset_points = data[data['dataset_name'] == dataset_name]
     if dataset_points.empty:
@@ -55,10 +60,26 @@ async def start_stream(ws, data, dataset_name):
         return
 
     logger.info(f"Streaming {len(dataset_points)} points for dataset: {dataset_name}")
-    # Send points for the requested dataset
-    for _, point in dataset_points.iterrows():
-        await ws.send_json(point.to_dict())
-        # await asyncio.sleep(0.1)  # Simulate streaming delay
+
+    # Stream data in batches
+    total_points = len(dataset_points)
+    total_batches = math.ceil(total_points / batch_size)
+
+    for i in range(total_batches):
+        batch_start = i * batch_size
+        batch_end = batch_start + batch_size
+        batch = dataset_points.iloc[batch_start:batch_end]
+
+        # Convert batch to JSON-friendly format
+        batch_data = batch.to_dict(orient='records')
+        json_data = json.dumps({"type": "data_batch", "data": batch_data})
+
+        # Compress data
+        compressed_data = gzip.compress(json_data.encode('ascii'))
+        # Encode as base64 to ensure binary-safe transmission
+        encoded_data = base64.b64encode(compressed_data).decode('ascii')
+
+        await ws.send_str(encoded_data)
 
     # Send end of stream message
     await ws.send_json({"type": "end_of_stream"})
@@ -101,6 +122,5 @@ async def init_app():
 # Main entry point
 if __name__ == "__main__":
     logger.info("Starting server")
-    loop = asyncio.get_event_loop()
-    app = loop.run_until_complete(init_app())
+    app = asyncio.run(init_app())
     web.run_app(app, port=8080)

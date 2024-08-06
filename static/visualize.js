@@ -2,7 +2,7 @@
 
 let scene, camera, renderer, controls, points, slider;
 let minTime, maxTime, pointData = [];
-let raycaster, mouse, INTERSECTED;
+let raycaster, mouse;
 let ws;
 const scalingFactor = 20;
 
@@ -32,12 +32,6 @@ function init() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
     controls.enableZoom = true;
-    controls.keys = {
-        LEFT: 'ArrowLeft', //left arrow
-        UP: 'ArrowUp', // up arrow
-        RIGHT: 'ArrowRight', // right arrow
-        BOTTOM: 'ArrowDown' // down arrow
-    }
 
     // Set up the slider
     slider = document.getElementById('slider');
@@ -57,8 +51,7 @@ function init() {
 
     // Resize listener
     window.addEventListener('resize', onWindowResize, true);
-    window.addEventListener('mousedown', onPointerClick, true);
-
+    window.addEventListener('mouseup', onPointerClick, true);
 
     // Initialize camera position
     camera.position.z = 200; // Adjusted for better visibility
@@ -69,7 +62,6 @@ function initRaycaster() {
     mouse = new THREE.Vector2();
     window.addEventListener('pointermove', onPointerMove);
     raycaster.params.Points.threshold = 0.5;
-
 }
 
 function onPointerMove(event) {
@@ -80,12 +72,11 @@ function onPointerMove(event) {
 
 function onPointerClick(){
     console.log('click!');
-    raycaster.setFromCamera( mouse, camera );
+    raycaster.setFromCamera(mouse, camera);
     // Check intersections with the points
     const intersects = raycaster.intersectObject(points, false);
 
     if (intersects.length > 0) {
-        //console.log(intersects);
         const intersect = intersects[0];
         const index = intersect.index;
         if (index >= 0 && index < pointData.length) {
@@ -120,7 +111,7 @@ function initPoints() {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    const material = new THREE.PointsMaterial({ size: 0.5, vertexColors: true });
+    const material = new THREE.PointsMaterial({ size: 0.1, vertexColors: true });
     points = new THREE.Points(geometry, material);
     scene.add(points);
 
@@ -158,7 +149,7 @@ function updatePoints() {
 
     geometry.attributes.position.needsUpdate = true;
     geometry.attributes.color.needsUpdate = true;
-    geometry.computeBoundingSphere()
+    geometry.computeBoundingSphere();
 }
 
 function adjustCameraToDataset() {
@@ -180,39 +171,72 @@ function adjustCameraToDataset() {
 function initWebSocket(datasetName) {
     ws = new WebSocket('ws://localhost:8080/ws');
 
+    ws.binaryType = 'arraybuffer'; // Set to handle binary data
+
     ws.onopen = () => {
         console.log('WebSocket connection established');
-        ws.send(JSON.stringify({ type: 'start_stream', dataset_name: datasetName }));
+        ws.send(JSON.stringify({ type: 'start_stream', dataset_name: datasetName, batch_size: 1000 }));
     };
 
     ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        //const data = JSON.parse(event.data);
+        //console.log(event);
 
-        if (data.type === 'end_of_stream') {
-            console.log('End of data stream');
-            //adjustCameraToDataset();
+        try {
+            const closed = JSON.parse(event.data);
+            if (closed.type === 'end_of_stream') {
+                console.log('End of data stream');
+                //adjustCameraToDataset();
+                return;
+            }
+            console.log(closed);
+            return;
+        } catch (parseError) {
+            console.log('continue');
+        }
+
+
+
+        if (event.error) {
+            console.error(`Error: ${event.error}`);
             return;
         }
 
-        if (data.error) {
-            console.error(`Error: ${data.error}`);
-            return;
+        // Decode base64 string
+        const base64Data = event.data;
+        const binaryString = atob(base64Data); // Base64 to binary string
+        const uint8Array = new Uint8Array(binaryString.length);
+
+        for (let i = 0; i < binaryString.length; i++) {
+            uint8Array[i] = binaryString.charCodeAt(i);
         }
 
-        pointData.push(data);
+        // Decompress data
+        try {
+            const decompressedData = pako.ungzip(uint8Array, { to: 'string' });
+            console.log('Decompressed data:', decompressedData);
 
-        minTime = Math.min(minTime ?? data.time, data.time);
-        maxTime = Math.max(maxTime ?? data.time, data.time);
+            try {
+                const parsedData = JSON.parse(decompressedData);
+                console.log('Parsed data:', parsedData);
 
-        slider.min = minTime;
-        slider.max = maxTime;
+                pointData.push(...parsedData.data);
 
-        if (!points) {
-            initPoints();
-        } else {
-            updatePoints();
+
+                if (!points) {
+                    initPoints();
+                } else {
+                    updatePoints();
+                }
+            } catch (parseError) {
+                console.error('Failed to parse JSON:', parseError);
+            }
+        } catch (decompressionError) {
+            console.error('Failed to decompress data:', decompressionError);
         }
     };
+
+
 
     ws.onclose = () => {
         console.log('WebSocket connection closed');
@@ -234,19 +258,15 @@ function checkHover() {
     // Update raycaster with the camera and mouse coordinates
     camera.updateMatrixWorld(); // Ensure the raycaster has the latest world matrix
 
-    //raycaster.ray.origin.setFromMatrixPosition(camera.matrixWorld);
-    //raycaster.ray.direction.set(mouse.x, mouse.y, 1).unproject(camera).sub(raycaster.ray.origin).normalize();
-    raycaster.setFromCamera( mouse, camera );
+    raycaster.setFromCamera(mouse, camera);
     // Check intersections with the points
     const intersects = raycaster.intersectObject(points, false);
 
     if (intersects.length > 0) {
-        //console.log(intersects);
         const intersect = intersects[0];
         const index = intersect.index;
         if (index >= 0 && index < pointData.length) {
             const dataPoint = pointData[index];
-            //console.log(dataPoint);
             overlay.textContent = `Additional Information: ${dataPoint.additional_info}`;
         }
     } else {

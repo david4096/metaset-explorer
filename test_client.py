@@ -3,7 +3,8 @@ import websockets
 import json
 import requests
 import random
-
+import gzip
+import base64
 
 # Fetch the list of datasets from the server
 async def fetch_datasets():
@@ -15,15 +16,15 @@ async def fetch_datasets():
         print("Failed to fetch datasets")
         return []
 
-
-# Fetch and stream data for a given dataset
+# Fetch and stream data for a given dataset in batches
 async def fetch_dataset(dataset_name):
     uri = "ws://localhost:8080/ws"  # WebSocket URL for streaming data
     async with websockets.connect(uri) as websocket:
         # Send request to start the data stream
         request = {
             "type": "start_stream",
-            "dataset_name": dataset_name
+            "dataset_name": dataset_name,
+            "batch_size": 100  # Example batch size
         }
         await websocket.send(json.dumps(request))
         print(f"Requested dataset: {dataset_name}")
@@ -31,22 +32,28 @@ async def fetch_dataset(dataset_name):
         # Receive data stream
         try:
             async for message in websocket:
-                point = json.loads(message)
+                # Decode base64 and decompress
+                decoded_data = base64.b64decode(message)
+                decompressed_data = gzip.decompress(decoded_data).decode('utf-8')
 
-                if point.get("type") == "end_of_stream":
+                response = json.loads(decompressed_data)
+
+                if response.get("type") == "end_of_stream":
                     print("End of stream reached.")
                     break
-                elif "error" in point:
-                    print(f"Error received: {point['error']}")
+                elif "error" in response:
+                    print(f"Error received: {response['error']}")
                     break
-                else:
-                    print(f"Received point: {point}")
-
+                elif response.get("type") == "data_batch":
+                    # Handle the received batch of data
+                    batch_data = response.get("data", [])
+                    print(f"Received batch with {len(batch_data)} points")
+                    for point in batch_data:
+                        print(point)
         except websockets.exceptions.ConnectionClosed as e:
             print(f"Connection closed: {e}")
         finally:
             print("WebSocket connection closed")
-
 
 # Main entry point
 async def main():
@@ -57,11 +64,10 @@ async def main():
         dataset_name = random.choice(datasets)
         print(f"Randomly selected dataset: {dataset_name}")
 
-        # Fetch and print the dataset
+        # Fetch and print the dataset in batches
         await fetch_dataset(dataset_name)
     else:
         print("No datasets available.")
-
 
 # Run the main function
 if __name__ == "__main__":
