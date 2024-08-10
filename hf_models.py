@@ -36,7 +36,7 @@ def clean_dates(lds):
 
 def generate_datasets(filename, num_results, num_clusters):
     api = HfApi()
-    hfdatasets = api.list_datasets(limit=num_results)
+    hfdatasets = api.list_models(limit=num_results)
     dss = list(hfdatasets)
 
     attrs = get_non_builtin_attributes(dss[0])
@@ -82,7 +82,7 @@ def generate_datasets(filename, num_results, num_clusters):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate datasets from Hugging Face.")
+    parser = argparse.ArgumentParser(description="Generate a dataset of the metadata about models from Hugging Face.")
     parser.add_argument('filename', type=str, help='Output Parquet filename')
     parser.add_argument('--num-results', type=int, default=300, help='Number of results to fetch from Hugging Face')
     parser.add_argument('--num-clusters', type=int, default=20, help='Number of clusters for the clustering model')

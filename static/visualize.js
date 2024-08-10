@@ -18,6 +18,27 @@ overlay.style.fontFamily = 'Arial, sans-serif';
 overlay.style.zIndex = '100'; // Ensure overlay is on top
 document.body.appendChild(overlay);
 
+// Create categorical colors based on the unique w values
+function createCategoricalColorMap(pointData) {
+    const uniqueWValues = [...new Set(pointData.map(point => point.w))];
+    const numCategories = uniqueWValues.length;
+
+    // Generate a color for each category
+    const colors = [];
+    const colorStep = 1 / numCategories;
+
+    for (let i = 0; i < numCategories; i++) {
+        // Generate a color with a different hue
+        const color = new THREE.Color().setHSL(i * colorStep, 1, 0.5); // HSL color space
+        colors.push(color);
+    }
+
+    return uniqueWValues.reduce((map, wValue, index) => {
+        map[wValue] = colors[index % colors.length];
+        return map;
+    }, {});
+}
+
 function init() {
     // Set up the scene, camera, and renderer
     scene = new THREE.Scene();
@@ -61,7 +82,7 @@ function initRaycaster() {
     raycaster = new THREE.Raycaster(camera.position, camera.direction, 0, 100000);
     mouse = new THREE.Vector2();
     window.addEventListener('pointermove', onPointerMove);
-    raycaster.params.Points.threshold = 0.5;
+    raycaster.params.Points.threshold = 1;
 }
 
 function onPointerMove(event) {
@@ -88,8 +109,13 @@ function onPointerClick(){
     }
 }
 
+let colorMap = {}; // Store the color map globally
+
 function initPoints() {
     if (pointData.length === 0) return;
+
+    // Create the color map based on point data
+    colorMap = createCategoricalColorMap(pointData);
 
     const numPoints = pointData.length;
     const geometry = new THREE.BufferGeometry();
@@ -102,10 +128,11 @@ function initPoints() {
         positions[i + 1] = point.y * scalingFactor; // Scaling factor
         positions[i + 2] = point.z * scalingFactor; // Scaling factor
 
-        // Default color (blue)
-        colors[i] = 0;
-        colors[i + 1] = 0;
-        colors[i + 2] = 1;
+        // Default color (white)
+        const color = colorMap[point.w] || new THREE.Color(0xffffff); // Default to white if not found
+        colors[i] = color.r;
+        colors[i + 1] = color.g;
+        colors[i + 2] = color.b;
     });
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -115,8 +142,6 @@ function initPoints() {
     points = new THREE.Points(geometry, material);
     scene.add(points);
 
-    // Initial time slice update
-    updateTimeSlice();
 }
 
 function updatePoints() {
@@ -133,12 +158,8 @@ function updatePoints() {
         positions[i + 1] = point.y * scalingFactor; // Scaling factor
         positions[i + 2] = point.z * scalingFactor; // Scaling factor
 
-        // Interpolate color from blue to white based on slider value
-        const distance = Math.abs(point.w - parseFloat(slider.value));
-        const maxDistance = maxTime - minTime;
-        const t = 1 - Math.min(distance / maxDistance, 1);
-        const color = new THREE.Color().lerpColors(new THREE.Color(0x0000ff), new THREE.Color(0xffffff), t);
-
+        // Get color based on w value
+        const color = colorMap[point.w] || new THREE.Color(0xffffff); // Default to white if not found
         colors[i] = color.r;
         colors[i + 1] = color.g;
         colors[i + 2] = color.b;
@@ -151,6 +172,7 @@ function updatePoints() {
     geometry.attributes.color.needsUpdate = true;
     geometry.computeBoundingSphere();
 }
+
 
 function adjustCameraToDataset() {
     if (!pointData.length) return;
@@ -189,8 +211,6 @@ function initWebSocket(datasetName) {
                 //adjustCameraToDataset();
                 return;
             }
-            console.log(closed);
-            return;
         } catch (parseError) {
             console.log('continue');
         }
@@ -203,24 +223,27 @@ function initWebSocket(datasetName) {
         }
 
         // Decode base64 string
-        const base64Data = event.data;
-        const binaryString = atob(base64Data); // Base64 to binary string
-        const uint8Array = new Uint8Array(binaryString.length);
-
-        for (let i = 0; i < binaryString.length; i++) {
-            uint8Array[i] = binaryString.charCodeAt(i);
-        }
+        // const base64Data = event.data;
+        // const binaryString = atob(base64Data); // Base64 to binary string
+        // const uint8Array = new Uint8Array(binaryString.length);
+        //
+        // for (let i = 0; i < binaryString.length; i++) {
+        //     uint8Array[i] = binaryString.charCodeAt(i);
+        // }
 
         // Decompress data
         try {
-            const decompressedData = pako.ungzip(uint8Array, { to: 'string' });
-            console.log('Decompressed data:', decompressedData);
-
-            try {
-                const parsedData = JSON.parse(decompressedData);
-                console.log('Parsed data:', parsedData);
-
-                pointData.push(...parsedData.data);
+            // const decompressedData = pako.ungzip(uint8Array, { to: 'string' });
+            // console.log('Decompressed data:', decompressedData);
+            //
+            // try {
+            //     const parsedData = JSON.parse(decompressedData);
+            //     console.log('Parsed data:', parsedData);
+            //
+            const parsedData = JSON.parse(event.data);
+            console.log('here');
+            console.log(parsedData);
+                 pointData.push(...parsedData.data);
 
 
                 if (!points) {
@@ -231,9 +254,9 @@ function initWebSocket(datasetName) {
             } catch (parseError) {
                 console.error('Failed to parse JSON:', parseError);
             }
-        } catch (decompressionError) {
-            console.error('Failed to decompress data:', decompressionError);
-        }
+        // } catch (decompressionError) {
+        //     console.error('Failed to decompress data:', decompressionError);
+        // }
     };
 
 
@@ -254,6 +277,7 @@ function updateTimeSlice() {
 
 function checkHover() {
     if (!points) return;
+    points.geometry.computeBoundingSphere();
 
     // Update raycaster with the camera and mouse coordinates
     camera.updateMatrixWorld(); // Ensure the raycaster has the latest world matrix
